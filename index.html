@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Xpert HPV Result Processing</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" 
+    integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+  <link href="css/file_upload.css" rel="stylesheet">
+  <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" 
+    integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" 
+    crossorigin="anonymous"></script>
+  <script src="js/scrapert.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/sodium.js" async></script>
+  <script src="js/pdftools.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon/build/global/luxon.min.js"></script>
+  <script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.4.0/dist/pdf-lib.min.js"></script>
+  <script src="js/redcap.js"></script>
+  <script>
+    var usePID = false;
+    $( document ).ready(function() {
+      var { pdfjsLib } = globalThis;
+      // The workerSrc property shall be specified.
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://mozilla.github.io/pdf.js/build/pdf.worker.mjs";
+      $("#fileform").submit(function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        upload();
+      });
+      $("#settingsForm").submit(e => {
+        e.preventDefault();
+        e.stopPropagation();
+        saveSettings();
+      });
+      $("#dlkey").click(e => {
+        e.preventDefault();
+        e.stopPropagation();
+        Encryption.newKey();
+      });
+      $("#backup").click(e => {
+        e.preventDefault();
+        e.stopPropagation();
+        REDCap.backup();
+      });
+      $("#restore").click(e => {
+        e.preventDefault();
+        e.stopPropagation();
+        REDCap.restoreBackup();
+      });
+      // Capture refreshing the settings screen
+      $("#pills-setting-tab").on("show.bs.tab", e => {
+        getSettings();
+      });
+      // Get config, use PIDs?
+      baseConfig();
+      usePID = config.usePID;
+      if (!config.usePID) {
+        $("#pidcolumn").addClass("d-none");
+      } else {
+        $("#search").attr("placeholder", `Search by Sample ID or ${config.pidName}`)
+        $("#pidcolumn").text(config.pidName);
+      }
+      // debug mode
+      if(config.debug) {
+        $("#deletedbbtn").removeClass("d-none").click((e) => { deleteDB(); });
+      }
+      // do we need config?
+      if (!REDCap.hasConf()) {
+        new bootstrap.Tab("#pills-setting-tab").show();
+      }
+    });
+  </script>
+  <div id="main-container" class="container-sm">
+    <div class="row mt-2">
+      <div class="col-md-8"><h2>Xpert Import Tool</h2></div>
+      <div class="col-md-4 text-end">
+        <button id="deletedbbtn" type="button" class="btn btn-warning d-none">Delete DB</button>
+    </div>
+    <ul class="nav nav-tabs mt-2 mb-2" id="pills-tab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="pills-home-tab" data-bs-toggle="pill" data-bs-target="#pills-home" type="button" 
+          role="tab" aria-controls="pills-home" aria-selected="true">Xpert Import Tool</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="pills-setting-tab" data-bs-toggle="pill" data-bs-target="#pills-setting" type="button" 
+          role="tab" aria-controls="pills-setting" aria-selected="false">Settings</button>
+      </li>
+    </ul>
+    <div class="tab-content" id="pills-tabContent">
+      <div class="tab-pane fade show active" id="pills-home" role="tabpanel" aria-labelledby="pills-home-tab" tabindex="0">
+        <form id="fileform">
+        <div class="row  mt-4">
+      	  <div class="col-md-6">
+              <div class="file-drop-area">
+                <button type="button" class="btn btn-primary">Choose files</button>
+                <span class="file-message">or drag and drop files here</span>
+                <input class="file-input" id="xpertfiles" type="file" multiple accept=".pdf,application/pdf">
+              </div>
+    	  </div>
+    	  <div class="col-md-2 align-self-center text-start">
+    	    <input type="submit" class="btn btn-primary" id="processbtn" disabled value="Process" />
+    	  </div>
+    	  <div class="col-md-4 align-self-center text-start">
+    	    <a class="btn btn-outline-primary" onclick="getCSV()"><img src="images/filetype-csv.svg" width="20" height="20"/>
+    	      <img src="images/download.svg" width="20" height="20"/></a></div>
+      </div>
+      </form>
+      <div class="row d-none" id="msgRow">
+        <div class="col-md-12 mt-2" id="msgBox">
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-12 mt-4">
+          <input class="form-control" id="search" placeholder="Search by Sample ID" onkeyup="search(this);"/>
+        </div>
+      </div>
+      <div class="row d-none" id="resTbl">
+        <div class="col-md-12 mt-2">
+          <table class="table table-hover">
+            <thead class="fw-bold">
+              <tr>
+                <td>Sample ID</td>
+                <td id="pidcolumn">PID/MRN</td>
+                <td>Cartridge S/N</td>
+                <td>Error</td>
+                <td>Results</td>
+                <td>Restricted</td>
+                <td>Ct</td>
+                <td>SAC</td>
+                <td>HPV 16</td>
+                <td>HPV 18/45</td>
+                <td>P3</td>
+                <td>P4</td>
+                <td>P5</td>
+                <td>PDF</td>
+                <td>Imported</td>
+              </tr>
+            </thead>
+            <tbody class="table-group-divider">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="tab-pane fade" id="pills-setting" role="tabpanel" aria-labelledby="pills-setting-tab"
+      tabindex="0">
+      <form class="row" id="settingsForm">
+        <div class="col-md-2">
+          <div class="row">
+            <div class="col text-center mt-3">
+              <input class='btn btn-primary' type='submit' value='Save'/>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col text-center mt-3">
+              <a class="btn btn-outline-primary" href="data:application/pdf;Test_Results.pdf" download="Test_Results.pdf">Test File
+                <img src="images/download.svg" width="20" height="20"/></a>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col text-center mt-3">
+              <button class="btn btn-outline-primary" id="dlkey">Download New Key
+                <img src="images/download.svg" width="20" height="20"/></button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col text-center mt-3">
+              <button class="btn btn-outline-primary" id="backup">Backup to REDCap
+                <img src="images/cloud-upload.svg" width="20" height="20"/></button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col text-center mt-3">
+              <button class="btn btn-outline-primary" id="restore">Restore from REDCap
+                <img src="images/download.svg" width="20" height="20"/></button>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-10 overflow-y-scroll border-bottom" style="height: 80vh;" id="settingsDiv"></div>
+      </form>
+    </div>
+  </div>
+  <div class="modal fade" id="myModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="myModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5" id="myModalLabel">Modal title</h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          ...
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast-container p-3 bottom-0 end-0">
+    <div class="toast align-items-center text-bg-success opacity-75 border-0 " 
+      role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body">
+          
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" 
+          data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
