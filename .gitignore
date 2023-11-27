@@ -3,3 +3,8 @@
 .RData
 .Ruserdata
 config.js
+.DS_Store
+ScapertJS.Rproj
+.Rdata
+.httr-oauth
+.quarto
