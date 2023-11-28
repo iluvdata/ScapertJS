@@ -168,7 +168,9 @@ self.REDCap = (() => {
   function backup() {
     checkConf();
     let backup = {};
-    backup.config = config;
+    backup.config = {};
+    Object.assign(backup.config, config);
+    delete backup.config.RC;
     backup.db = [];
     initDB().then (db => {
       const obs = db.transaction("xpert_results").objectStore("xpert_results");
@@ -206,7 +208,7 @@ self.REDCap = (() => {
           result = await post(data, key)
           .catch(e => {
 
-            showErr("Unable to get file repository", "REDCap Error: " + e.message);
+            showErr("Unable to get file repository", "REDCap Error: " + e);
           });
           let file = result.find(e => e.name === "Scrapert_Backup.json");
           if (file) {
@@ -214,7 +216,7 @@ self.REDCap = (() => {
             data.doc_id = file.doc_id;
             result = await post(data, key, { dataType: "text"})
             .catch(e => {
-              showErr("Unable to delete prior backup", "REDCap Error: " + e.message);
+              showErr("Unable to delete prior backup", "REDCap Error: " + e);
             });
           }
           data = new FormData();
@@ -239,7 +241,7 @@ self.REDCap = (() => {
     const key = await Encryption.getSecret(config.RC.apikey);
     result = await post(data, key)
     .catch(e => {
-      showModal("Unable to get file repository", "REDCap Error: " + e.message);
+      showModal("Unable to get file repository", "REDCap Error: " + e);
     });
     let file = result.find(e => e.name === "Scrapert_Backup.json");
     data = {
@@ -265,8 +267,10 @@ self.REDCap = (() => {
         } else resolve(db);
       });
     }));
-    // Save the data
+    // Save the datq (keep our credentials!)
+    const RC = config.RC;
     config = file.config;
+    config.RC = RC;
     localStorage.setItem("config", JSON.stringify(config));
     writeTabToDB(file.db, true);
     showToast("Backup Restored");
