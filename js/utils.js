@@ -1,9 +1,8 @@
 self.Encryption = (() => {
-  function encrypt(message, callback) {
+  async function encrypt(message) {
     let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-    loadKey().then(key => {
-      callback(sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(message, nonce, sodium.from_hex(key))));
-    });
+    const key = await loadKey();
+    return sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(message, nonce, sodium.from_hex(key)));
   } 
   function decrypt(nonce_and_cipher, key) {
     let nonce_cipher = nonce_and_cipher.split("_");
@@ -20,16 +19,17 @@ self.Encryption = (() => {
         script.parentNode.removeChild(script);
       };
       script.onerror = function(e) {
-        showModal("Error", '"config.js" not found. Have you downloaded it to the base directory with "index.html"?',
-          "Click on settings to download and set up REDCap API Key.");
+        new bootstrap.Tab("#pills-setting-tab").show();
+        showModal("Error", '<code>config.js</code> not found. Have you downloaded it to the base directory with <code>index.html</code>? '
+          + 'Click on "Settings" tab to download (and set up REDCap API Token).');
         reject('"config.js" not found.');
       };
       script = document.documentElement.firstChild.appendChild(script);
     });
   }
   async function getSecret(secret) {
-    if (!secret) return null;
     const key = await loadKey();
+    if (!secret) return null;
     let txt = null;
     try {
       txt = decrypt(secret, key);
@@ -46,24 +46,26 @@ self.Encryption = (() => {
   }
   function newKey() {
     $(".modal-footer").prepend(`<button id="confirmKey" class="btn btn-danger">Download</button>`);
-    $("#confirmKey").click((e) => { 
+    $("#confirmKey").click(async (e) => { 
       // get old key
-      getSecret(config.RC.apikey).then((apikey) => {
-        let key = sodium.to_hex(sodium.crypto_secretbox_keygen());
-        // Reencrypt the key
+      let key = sodium.to_hex(sodium.crypto_secretbox_keygen());
+      // Reencrypt old apikey if present
+      let apikey = config.RC.apikey ? await getSecret(config.RC.apikey) : null;
+      console.log(apikey);
+      if (apikey !== null) {
         let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
         config.RC.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(apikey, nonce, sodium.from_hex(key)));
         localStorage.setItem("config", JSON.stringify(config));
-        let text = `function mySecret () {return "${ key }";}`;
-        let element = document.createElement('a');
-        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
-        element.setAttribute('download', "config.js");
-        element.style.display = 'none';
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
+      }
+      let text = `function mySecret () {return "${ key }";}`;
+      let element = document.createElement('a');
+      element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+      element.setAttribute('download', "config.js");
+      element.style.display = 'none';
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
         $("#myModal").modal("hide");
-      });
     });
     showModal("Continue?", "You must save this file as 'config.js' in the root directory with 'index.html' in order to access any authentication keys.");
     $("#myModal").on('hidden.bs.modal', e => { $("#confirmKey").remove(); });

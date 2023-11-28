@@ -259,7 +259,9 @@ function saveSettings() {
       if (!config.RC) config.RC = {};
       if (el.name.startsWith("apikey")) {
           if (el.value !== "") {
-            Encryption.encrypt(el.value, s => { config.RC.apikey = s; });
+            Encryption.encrypt(el.value).then(s => { 
+              config.RC.apikey = s;
+            });
           }
       } else {
         config.RC.api = el.value;

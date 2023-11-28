@@ -33,8 +33,8 @@ self.REDCap = (() => {
       event: "",
       returnFormat: "json"
     };
-    let result = await post(data, key, { dataType: "text"})
-      .catch(e => console.warn("REDCap unable to delete file: " + JSON.parse(e.responseText).error));
+    let result = await post(data, key, {dataType: "text"})
+      .catch(e => console.warn("Unable to delete file: " + e));
     data = {
       content: "record",
       format: "json",
@@ -44,7 +44,7 @@ self.REDCap = (() => {
       returnContent: "count",
       returnFormat: "json",
       data: JSON.stringify ([{
-        record_id: crf_id,
+        record_id: recid,
         xpert_result_complete: "",
         xpert_result: "",
         xpert_timestamp: "",
@@ -129,18 +129,22 @@ self.REDCap = (() => {
       event: "",
       returnFormat: "json"
     };
-    const file = await post(data, undefined, {xhrFields: { responseType: "blob" }})
-      .catch(e => {
-        throw new Error("REDCap unable to download PDF file: " + e.message);
+    function myXHR() {
+      
+    };
+    const file = await post(data, undefined, {xhr: () => {
+      const xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState == 2 && xhr.status == 200) xhr.responseType = "blob";
+      };
+      return xhr;
+    }}).catch(e => {
+        throw new Error("Unable to download PDF file: " + e);
       });
     return file;
   }
   async function post(data, key, options) {
-    if(!hasConf()){
-        new bootstrap.Tab("#pills-setting-tab").show();
-        showModal("REDCap API Not Configured", 'Please enter the REDCap API URL and/or API Token on the "Settings" tab');
-        throw new Error("REDCap configuration missing");
-    }
+    checkConf();
     if (key === undefined) key = await Encryption.getSecret(config.RC.apikey).catch(e => {
       throw new Error(e);
     });
@@ -156,10 +160,13 @@ self.REDCap = (() => {
     return new Promise((resolve, reject) => {
       $.post(x)
         .done(result => resolve(result))
-        .fail(e => reject("REDCap Error: " + e.message));
+        .fail((jqXHR) => {
+          reject("REDCap Error: " + (jqXHR.responseJSON ? jqXHR.responseJSON.error : JSON.parse(jqXHR.responseText).error)); 
+        });
     });
   }
   function backup() {
+    checkConf();
     let backup = {};
     backup.config = config;
     backup.db = [];
@@ -222,6 +229,7 @@ self.REDCap = (() => {
     });
   }
   async function restoreBackup() {
+    checkConf();
     let data = {
       content : "fileRepository",
       action : "list",
@@ -262,6 +270,13 @@ self.REDCap = (() => {
     localStorage.setItem("config", JSON.stringify(config));
     writeTabToDB(file.db, true);
     showToast("Backup Restored");
+  }
+  function checkConf() {
+    if(!hasConf()) {
+      new bootstrap.Tab("#pills-setting-tab").show();
+      showModal("REDCap API Not Configured", 'Please enter the REDCap API URL and/or API Token on the "Settings" tab');
+      throw new Error("REDCap configuration missing");
+    }
   }
   function hasConf () {
     if (config) {

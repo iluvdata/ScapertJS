@@ -71,11 +71,12 @@
         $("#deletedbbtn").removeClass("d-none").click((e) => { deleteDB(); });
       }
       // do we need config?
-      if (!REDCap.hasConf()) {
-        new bootstrap.Tab("#pills-setting-tab").show();
-        showModal("REDCap API Not Configured", 'Please enter the REDCap API URL and/or API Token on the "Settings" tab')
-      }
-      Encryption.getSecret(config.RC.apikey);
+      Encryption.getSecret(config.RC.apikey).then(() => {
+        if (!REDCap.hasConf()) {
+          new bootstrap.Tab("#pills-setting-tab").show();
+          showModal("REDCap API Not Configured", 'Please enter the REDCap API URL and/or API Token on the "Settings" tab');
+        }
+      });
     });
   </script>
   <div id="main-container" class="container-sm">
