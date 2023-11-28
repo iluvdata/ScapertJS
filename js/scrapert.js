@@ -94,7 +94,6 @@ function upload() {
             $("#fileform").trigger("reset");
           });
         });
-
       }).catch((e) => {
         if (e.name === "ConstraintError") showErr("Unable to import. Duplicate results.", e.name + ": " + e.message);
         else showErr(e.message, e.name);
@@ -241,7 +240,7 @@ function getSettings() {
   sTab.append('<div class="md-3 row"><div class="col-md fw-bold text-center">REDCap Settings</div></div>');
   sTab.append(`<div class="md-3 row">
           <label for="api" class="col-md-3 col-form-label text-end fw-bold">REDCap API URL</label>
-          <div class="col-md-9"><input type="text" class="form-control" name="api" value="${ config.RC.api ? config.RC.api : ""}" 
+          <div class="col-md-9"><input type="text" class="form-control" name="api" value="${ config.RC && config.RC.api ? config.RC.api : ""}" 
              required placeholder="https://..."></div></div>` + 
              passcode("REDCap API Token", "apikey", !REDCap.hasConf()));
   
@@ -256,10 +255,12 @@ function getSettings() {
 }
 function saveSettings() { 
   $("#settingsForm input:not(.btn),select").each((i, el) => {
-    // Xpert?
     if(el.name.startsWith("api")) {
+      if (!config.RC) config.RC = {};
       if (el.name.startsWith("apikey")) {
-          if (el.value !== "") Encryption.encrypt(el.value, s => { config.RC.apikey = s});
+          if (el.value !== "") {
+            Encryption.encrypt(el.value, s => { config.RC.apikey = s; });
+          }
       } else {
         config.RC.api = el.value;
       }

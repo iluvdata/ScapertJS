@@ -1,7 +1,7 @@
 self.Encryption = (() => {
   function encrypt(message, callback) {
     let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-    loadKey(key => {
+    loadKey().then(key => {
       callback(sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(message, nonce, sodium.from_hex(key))));
     });
   } 
@@ -12,25 +12,43 @@ self.Encryption = (() => {
     return sodium.to_string(sodium.crypto_secretbox_open_easy(cipher, nonce, sodium.from_hex(key)));
   }
   function loadKey() {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
       let script = document.createElement("script");
       script.src = "config.js";
       script.onload = function () {
         resolve(mySecret());
         script.parentNode.removeChild(script);
       };
+      script.onerror = function(e) {
+        showModal("Error", '"config.js" not found. Have you downloaded it to the base directory with "index.html"?',
+          "Click on settings to download and set up REDCap API Key.");
+        reject('"config.js" not found.');
+      };
       script = document.documentElement.firstChild.appendChild(script);
     });
   }
   async function getSecret(secret) {
+    if (!secret) return null;
     const key = await loadKey();
-    return decrypt(secret, key);
+    let txt = null;
+    try {
+      txt = decrypt(secret, key);
+    } catch (e) {
+      if (e.message.includes("wrong secret key")) {
+        showModal("Secret Key Mismatch", `Unfortuneately the key in <code>config.js</code> does not decode the current REDCap API Token.
+          <ol><li>The REDCap API Token will be unset</li><li>Reenter the REDCap API Token on the "Settings" tab</li></ol>`);
+          config.RC.apikey = null;
+          localStorage.setItem("config", JSON.stringify(config));
+          new bootstrap.Tab("#pills-setting-tab").show();
+      } else showModal("Error", e.message);
+    }
+    return txt;
   }
   function newKey() {
     $(".modal-footer").prepend(`<button id="confirmKey" class="btn btn-danger">Download</button>`);
     $("#confirmKey").click((e) => { 
       // get old key
-      getSecret(config.RC.apikey, (apikey) => {
+      getSecret(config.RC.apikey).then((apikey) => {
         let key = sodium.to_hex(sodium.crypto_secretbox_keygen());
         // Reencrypt the key
         let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
@@ -44,6 +62,7 @@ self.Encryption = (() => {
         document.body.appendChild(element);
         element.click();
         document.body.removeChild(element);
+        $("#myModal").modal("hide");
       });
     });
     showModal("Continue?", "You must save this file as 'config.js' in the root directory with 'index.html' in order to access any authentication keys.");
@@ -117,16 +136,16 @@ function initDB() {
     };
   });
 }
-async function writeTabToDB(xpert) {
+async function writeTabToDB(xpert, update) {
   const db = await initDB();
   const transaction = db.transaction(["xpert_results"], "readwrite");
   const objStore = transaction.objectStore("xpert_results");
   return Promise.all(xpert.map(e => {
     return new Promise((resolve, reject) => {
       e.search = [e.sample_id, e.pid];
-      const request = objStore.put(e);
+      const request = update !== undefined ? objStore.put(e) : objStore.add(e);
       request.onsuccess = (e) => resolve(e.target.result);
-      request.onerror = (e) => reject(e);
+      request.onerror = (e) => reject(e.target.error);
     });
   }));
 }
@@ -217,9 +236,15 @@ async function dbGetAll(keys) {
 }
 async function getPDFLink(sn) {
   const xpert = (await dbGetAll([sn]))[0];
-  let file = xpert.uploaded ? 
-    await REDCap.getPDF(xpert.crf_id) :
-    new Blob([xpert.pdf], {type: "application/pdf"});
+  let file = undefined;
+  if (xpert.uploaded) {
+    file =  await REDCap.getPDF(xpert.crf_id).catch(e => {
+      clearErr();
+      showErr("REDCap: Unable to download PDF file", e.message);
+      throw new Error("Unable to get PDF file");
+    });
+  } else file = new Blob([xpert.pdf], {type: "application/pdf"});
+  if (file === undefined) throw new Error("Unable to get PDF file");
   let element = document.createElement('a');
   element.setAttribute('href', URL.createObjectURL(file));
   element.setAttribute("scrapert-file", xpert.sample_id + ".pdf");
@@ -257,11 +282,11 @@ function getCSV() {
         xpert = calcXpert(xpert);
         xpert = xpert.map(x => {
           return keys.map(key => {
-            return JSON.stringify(x[key]);
+            return x[key] instanceof Date ? luxon.DateTime.fromJSDate(x[key]).toFormat("yyyy-MM-dd HH:mm:ss") : x[key]
           }).join(",");
         }).join("\n");
         let element = document.createElement('a');
-        element.setAttribute('href', "data:text/csv;charset=utf-8," + keys.join(",") + "\n" + xpert);
+        element.setAttribute('href', "data:text/csv;charset=utf-8," + encodeURI(keys.join(",") + "\n" + xpert));
         element.style.display = 'none';
         element.setAttribute('download', "xpert.csv");
         element.click();
