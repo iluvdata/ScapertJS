@@ -7,3 +7,4 @@ config.js
 ScapertJS.Rproj
 .httr-oauth
 .quarto
+.vscode
