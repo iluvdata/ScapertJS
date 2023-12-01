@@ -15,7 +15,7 @@ self.REDCap = (() => {
     );
     return Promise.all(results.filter(e => e.pid ? true : false).map(e =>  {
         $("#sid" + e.sample_id).text(e.pid);
-        return updatePID(e.sample_id, e.pid);
+        return LocalData.updatePID(e.sample_id, e.pid);
     }));
   }
   async function clearCRF(sn) {
@@ -68,7 +68,7 @@ self.REDCap = (() => {
         showErr("Unable to map pids to record_ids", "REDCap Error: " + e.message));
   } 
   async function updateCRF(sn) {
-    xpert = await dbGetAll(sn);
+    xpert = await LocalData.dbGetAll(sn);
     xpert = xpert.filter(e => { return e.pid !== undefined });
     const key = await Encryption.getSecret(config.RC.apikey);
     let recids = await getRecordIDs(xpert, key);
@@ -98,7 +98,7 @@ self.REDCap = (() => {
     };
     const count = await post(data, key)
       .catch(e => 
-        showErr("Error updating CRF", "REDCap Error: " + e.message));
+        showErßr("Error updating CRF", "REDCap Error: " + e.message));
     xp = undefined;
     data = new FormData();
     data.set("content", "file");
@@ -116,7 +116,7 @@ self.REDCap = (() => {
       });
       // delete the file from the database if we uploaded and release from memory
       delete xpert[i].pdf;
-      let res = await crfDB(e.cartridge_sn, e.record_id);
+      let res = await LocalData.crfDB(e.cartridge_sn, e.record_id);
       $("#ul" + res.sn).text(dateFormat.format(res.uploaded));
     }); 
   }
@@ -165,116 +165,6 @@ self.REDCap = (() => {
         });
     });
   }
-  function backup() {
-    checkConf();
-    let backup = {};
-    backup.config = {};
-    Object.assign(backup.config, config);
-    delete backup.config.RC;
-    backup.db = [];
-    initDB().then (db => {
-      const obs = db.transaction("xpert_results").objectStore("xpert_results");
-      let result = obs.openCursor();
-      result.onsuccess = async (e) => {
-        const cursor = e.target.result;
-        if(cursor) {
-          backup.db.push(cursor.value);
-          cursor.continue();
-        } else {
-          // Convert pdfs to base64
-          backup.db = await Promise.all(backup.db.map(async xpert => {
-            return new Promise((resolve) => {
-              if (xpert.pdf) {
-                const blob = new Blob([xpert.pdf]);
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                  const dataUrl = event.target.result;
-                  xpert.pdf = dataUrl.split(',')[1];
-                  resolve(xpert);
-                };
-                reader.readAsDataURL(blob);
-              } else {
-                resolve(xpert);
-              }
-            });
-          }));
-          let data = {
-            content : "fileRepository",
-            action : "list",
-            format : "json",
-            returnFormat : "json"
-          };
-          const key = await Encryption.getSecret(config.RC.apikey);
-          result = await post(data, key)
-          .catch(e => {
-
-            showErr("Unable to get file repository", "REDCap Error: " + e);
-          });
-          let file = result.find(e => e.name === "Scrapert_Backup.json");
-          if (file) {
-            data.action = "delete";
-            data.doc_id = file.doc_id;
-            result = await post(data, key, { dataType: "text"})
-            .catch(e => {
-              showErr("Unable to delete prior backup", "REDCap Error: " + e);
-            });
-          }
-          data = new FormData();
-          data.set("content", "fileRepository");
-          data.set("action", "import");
-          data.set("returnFormat", "json");
-          data.set("file", new Blob([JSON.stringify(backup)], {type: "application/json"}), "Scrapert_Backup.json");
-          result = await post(data, key);
-          showToast("Backup Complete (Backed up to REDCap as Scrapert_Backup.json)");
-        }
-      };
-    });
-  }
-  async function restoreBackup() {
-    checkConf();
-    let data = {
-      content : "fileRepository",
-      action : "list",
-      format : "json",
-      returnFormat : "json"
-    };
-    const key = await Encryption.getSecret(config.RC.apikey);
-    result = await post(data, key)
-    .catch(e => {
-      showModal("Unable to get file repository", "REDCap Error: " + e);
-    });
-    let file = result.find(e => e.name === "Scrapert_Backup.json");
-    data = {
-      content: "fileRepository",
-      action: "export",
-      doc_id: file.doc_id,
-      returnFormat: "json"
-    };
-    file = await post(data, key, {dataType: "json"})
-      .catch(e => {
-        showModal("Unable to download file", "REDCap Error: " + e.message);
-      });
-    // Convert pdfs from Base64
-    file.db = await Promise.all(file.db.map(db => {
-      return new Promise((resolve) => {
-        if (db.pdf) {
-          const dURL = "data:application/pdf;base64," + db.pdf;
-          fetch(dURL).then(res => res.arrayBuffer())
-            .then(buffer => {
-              db.pdf = buffer;
-              resolve(db);
-            });
-        } else resolve(db);
-      });
-    }));
-    // Save the datq (keep our credentials!)
-    const RC = config.RC;
-    config = file.config;
-    config.RC = RC;
-    localStorage.setItem("config", JSON.stringify(config));
-    writeTabToDB(file.db, true);
-    showToast("Backup Restored");
-  }
   function checkConf() {
     if(!hasConf()) {
       new bootstrap.Tab("#pills-setting-tab").show();
@@ -294,9 +184,9 @@ self.REDCap = (() => {
     getPID: getPID,
     updateCRF: updateCRF,
     hasConf: hasConf,
+    checkConf,
     getPDF: getPDF,
-    backup: backup,
-    restoreBackup: restoreBackup,
-    clearCRF: clearCRF
+    clearCRF: clearCRF,
+    post: post
   };
 })();
