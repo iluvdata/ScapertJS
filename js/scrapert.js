@@ -29,11 +29,9 @@ $( document ).ready(async () => {
     $("#pidcolumn").text(config.pidName);
   }
   // do we need config?
-  Encryption.getSecret(config.RC.apikey).then(() => {
-    if (!REDCap.hasConf()) {
-      new bootstrap.Tab("#pills-setting-tab").show();
-      showModal("REDCap API Not Configured", 'Please enter the REDCap API URL and/or API Token on the "Settings" tab');
-    }
+  Encryption.getSecret(config.RCS.apikey).then(() => {
+    REDCapS.checkConf();
+    REDCapD.checkConf();
   });
 });
 async function setupEnviroment() {
@@ -212,14 +210,21 @@ function getSettings() {
       ${ Intl.supportedValuesOf("timeZone").map((o) => "<option " + (o === config.xpertTZ ? "selected" : "") + ">" + o + "</option>").join("") }
     </select></div></div>`);
   sTab.append(checkbox("Debug Mode?", "debug", config.debug));
-  sTab.append('<div class="md-3 row"><div class="col-md fw-bold text-center">REDCap Settings</div></div>');
+  sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Specimens Settings</div></div>');
   sTab.append(`<div class="md-3 row">
-          <label for="api" class="col-md-3 col-form-label text-end fw-bold">REDCap API URL</label>
-          <div class="col-md-9"><input type="text" class="form-control" name="api" id="api" value="${ config.RC && config.RC.api ? config.RC.api : ""}" 
+          <label for="sapi" class="col-md-3 col-form-label text-end fw-bold">Specimen API URL</label>
+          <div class="col-md-9"><input type="text" class="form-control" name="sapi" id="sapi" value="${ config.RCS && config.RCS.api ? config.RCS.api : ""}" 
              required placeholder="https://..."></div></div>` + 
-             passcode("REDCap API Token", "apikey", !REDCap.hasConf()));
+             passcode("Specimen API Token", "sapikey", !REDCapS.hasConf()));
+
+  sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Data System Settings</div></div>');
+  sTab.append(`<div class="md-3 row">
+          <label for="dapi" class="col-md-3 col-form-label text-end fw-bold">Data API URL</label>
+          <div class="col-md-9"><input type="text" class="form-control" name="dapi" id="dapi" value="${ config.RCD && config.RCD.api ? config.RCD.api : ""}" 
+             required placeholder="https://..."></div></div>` + 
+             passcode("Data API Token", "dapikey", !REDCapD.hasConf()));
   
-  sTab.append('<div class="md-3 row"><div class="col-md fw-bold text-center">Modified Xpert Settings</div></div>');
+  sTab.append('<div class="md-3 row mt-3"><div class="col-md fw-bold text-center">Modified Xpert Settings</div></div>');
   for (let x in config.xpert) {
     sTab.append(checkbox(`Use ${x}?`, `use${x}`, config.xpert[x].use)); 
     sTab.append(`<div class="mb-3 row">
@@ -229,19 +234,27 @@ function getSettings() {
   } 
 }
 function saveSettings() { 
-  $("#settingsForm input:not(.btn),select").each((i, el) => {
-    if(el.name.startsWith("api")) {
-      if (!config.RC) config.RC = {};
-      if (el.name.startsWith("apikey")) {
+  $("#settingsForm input:not(.btn),select").each(async (i, el) => {
+    if(el.name.startsWith("sapi")) {
+      if (!config.RCS) config.RCS = {};
+      if (el.name.startsWith("sapikey")) {
           if (el.value !== "") {
-            Encryption.encrypt(el.value).then(s => { 
-              config.RC.apikey = s;
-            });
+            config.RCS.apikey = await Encryption.encrypt(el.value);
           }
       } else {
-        config.RC.api = el.value;
+        config.RCS.api = el.value;
       }
-    } else if(!el.name.match(/^(ct|use).*/)) {
+    } else if(el.name.startsWith("dapi")) {
+      if (!config.RCD) config.RCD = {};
+      if (el.name.startsWith("dapikey")) {
+          if (el.value !== "") {
+            config.RCD.apikey = await Encryption.encrypt(el.value);
+          }
+      } else {
+        config.RCD.api = el.value;
+      }
+    }
+     else if(!el.name.match(/^(ct|use).*/)) {
       config[el.name] = el.type === "checkbox" ? el.checked :
         (el.value === "" ? null : el.value);
     } else {

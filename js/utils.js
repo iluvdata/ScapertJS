@@ -50,10 +50,16 @@ self.Encryption = (() => {
       // get old key
       let key = sodium.to_hex(sodium.crypto_secretbox_keygen());
       // Reencrypt old apikey if present
-      let apikey = config.RC.apikey ? await getSecret(config.RC.apikey) : null;
-      if (apikey !== null) {
+      let sapikey = config.RCS.apikey ? await getSecret(config.RCS.apikey) : null;
+      if (sapikey !== null) {
         let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-        config.RC.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(apikey, nonce, sodium.from_hex(key)));
+        config.RCS.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(sapikey, nonce, sodium.from_hex(key)));
+        localStorage.setItem("config", JSON.stringify(config));
+      }
+      let dapikey = config.RCD.apikey ? await getSecret(config.RCD.apikey) : null;
+      if (dapikey !== null) {
+        let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+        config.RCD.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(dapikey, nonce, sodium.from_hex(key)));
         localStorage.setItem("config", JSON.stringify(config));
       }
       let text = `function mySecret () {return "${ key }";}`;
@@ -108,10 +114,14 @@ self.LocalConfig = (() => {
         }
       };
       config.version = version;
-      config.RC = {
+      config.RCS = {
         api: null,
         apikey: null
       };
+      config.RCD = {
+        api: null,
+        apikey: null
+      }
       localStorage.setItem("config", JSON.stringify(config));
     }
    return JSON.parse(localStorage.getItem("config"));
@@ -214,7 +224,6 @@ self.LocalData = (() => {
         
     });
     showModal("Confirm Delete DB?", "This cannot be undone. Consider backup!");
-    
   }
   function search(q, cb) {
     initDB().then(db => {
@@ -276,10 +285,10 @@ self.LocalData = (() => {
     });
   }
   function updateCRF(sn) {
-    return REDCap.updateCRF(sn);
+    return REDCapD.updateCRF(sn);
   }
   function getPID(sample_id) {
-    return REDCap.getPID(sample_id);
+    return REDCapS.getPID(sample_id);
   }
   return {
     dbGetAll: dbGetAll,
@@ -296,7 +305,7 @@ self.LocalData = (() => {
 })();
 self.LocalUtils = (() => {
   function backup() {
-    REDCap.checkConf();
+    REDCapS.checkConf();
     let backup = {};
     backup.config = {};
     Object.assign(backup.config, config);
@@ -334,8 +343,8 @@ self.LocalUtils = (() => {
             format : "json",
             returnFormat : "json"
           };
-          const key = await Encryption.getSecret(config.RC.apikey);
-          result = await REDCap.post(data, key)
+          const key = await Encryption.getSecret(config.RCS.apikey);
+          result = await REDCapS.post(data, key)
           .catch(e => {
             showErr("Unable to get file repository", "REDCap Error: " + e);
           });
@@ -343,7 +352,7 @@ self.LocalUtils = (() => {
           if (file) {
             data.action = "delete";
             data.doc_id = file.doc_id;
-            result = await REDCap.post(data, key, { dataType: "text"})
+            result = await REDCapS.post(data, key, { dataType: "text"})
             .catch(e => {
               showErr("Unable to delete prior backup", "REDCap Error: " + e);
             });
@@ -353,22 +362,22 @@ self.LocalUtils = (() => {
           data.set("action", "import");
           data.set("returnFormat", "json");
           data.set("file", new Blob([JSON.stringify(backup)], {type: "application/json"}), "Scrapert_Backup.json");
-          result = await REDCap.post(data, key);
+          result = await REDCapS.post(data, key);
           showToast("Backup Complete (Backed up to REDCap as Scrapert_Backup.json)");
         }
       };
     });
   }
   async function restoreBackup() {
-    REDCap.checkConf();
+    REDCapS.checkConf();
     let data = {
       content : "fileRepository",
       action : "list",
       format : "json",
       returnFormat : "json"
     };
-    const key = await Encryption.getSecret(config.RC.apikey);
-    result = await REDCap.post(data, key)
+    const key = await Encryption.getSecret(config.RCS.apikey);
+    result = await REDCapS.post(data, key)
     .catch(e => {
       showModal("Unable to get file repository", "REDCap Error: " + e);
     });
@@ -379,7 +388,7 @@ self.LocalUtils = (() => {
       doc_id: file.doc_id,
       returnFormat: "json"
     };
-    file = await REDCap.post(data, key, {dataType: "json"})
+    file = await REDCapS.post(data, key, {dataType: "json"})
       .catch(e => {
         showModal("Unable to download file", "REDCap Error: " + e.message);
       });
@@ -397,9 +406,11 @@ self.LocalUtils = (() => {
       });
     }));
     // Save the datq (keep our credentials!)
-    const RC = config.RC;
+    const RCS = config.RCS;
+    const RCD = config.RCD;
     config = file.config;
-    config.RC = RC;
+    config.RCD = RCD;
+    config.RCS = RCS;
     localStorage.setItem("config", JSON.stringify(config));
     Data.write(file.db, true);
     showToast("Backup Restored");

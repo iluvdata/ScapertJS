@@ -1,4 +1,7 @@
-self.REDCap = (() => {
+/* 
+ * REDCapS is for specimens and REDCapD is for data (CRFs)
+*/
+self.REDCapS = (() => {
   async function getPID(sample_ids) {
     let data = {
       content: "record",
@@ -18,6 +21,54 @@ self.REDCap = (() => {
         return LocalData.updatePID(e.sample_id, e.pid);
     }));
   }
+  async function post(data, key, options) {
+    checkConf();
+    if (key === undefined) key = await Encryption.getSecret(config.RCS.apikey).catch(e => {
+      throw new Error(e);
+    });
+    let x  = { url: config.RCS.api};
+    if (options !== undefined) x = {...x, ...options };
+    if (data instanceof FormData) {
+      x.contentType =  false;
+      x.processData = false;
+      x.dataType = "text";
+      data.set("token", key);
+    } else data = { ...data, token: key};
+    x.data = data;
+    return new Promise((resolve, reject) => {
+      $.post(x)
+        .done(result => resolve(result))
+        .fail((jqXHR) => {
+          reject("REDCap Error: " + (jqXHR.responseJSON ? jqXHR.responseJSON.error : JSON.parse(jqXHR.responseText).error)); 
+        });
+    });
+  }
+  function checkConf() {
+    if(!hasConf()) {
+      new bootstrap.Tab("#pills-setting-tab").show();
+      showModal("REDCap Specimen API Not Configured", 'Please enter the REDCap Specimen API URL and/or API Token on the "Settings" tab');
+      throw new Error("REDCap specimen configuration missing");
+    }
+  }
+  function hasConf () {
+    if (config) {
+      if (config.RCS) {
+        if (config.RCS.api && config.RCS.apikey) return true;
+      }
+    }
+    return false;
+  } 
+  return {
+    getPID: getPID,
+    hasConf: hasConf,
+    checkConf: checkConf,
+    post: post
+  };
+})();
+/* 
+ * REDCapS is for specimens and REDCapD is for data (CRFs)
+*/
+self.REDCapD = (() => {
   async function clearCRF(sn) {
     let xpert = await dbGetAll([sn]);
     xpert = xpert.filter(e => { return e.pid !== undefined });
@@ -70,7 +121,7 @@ self.REDCap = (() => {
   async function updateCRF(sn) {
     xpert = await LocalData.dbGetAll(sn);
     xpert = xpert.filter(e => { return e.pid !== undefined });
-    const key = await Encryption.getSecret(config.RC.apikey);
+    const key = await Encryption.getSecret(config.RCD.apikey);
     let recids = await getRecordIDs(xpert, key);
     xpert = xpert.map(e => { 
       e.record_id =  recids.find(({pid}) => pid === e.pid).record_id;
@@ -148,7 +199,7 @@ self.REDCap = (() => {
     if (key === undefined) key = await Encryption.getSecret(config.RC.apikey).catch(e => {
       throw new Error(e);
     });
-    let x  = { url: config.RC.api};
+    let x  = { url: config.RCD.api};
     if (options !== undefined) x = {...x, ...options };
     if (data instanceof FormData) {
       x.contentType =  false;
@@ -168,23 +219,22 @@ self.REDCap = (() => {
   function checkConf() {
     if(!hasConf()) {
       new bootstrap.Tab("#pills-setting-tab").show();
-      showModal("REDCap API Not Configured", 'Please enter the REDCap API URL and/or API Token on the "Settings" tab');
-      throw new Error("REDCap configuration missing");
+      showModal("REDCap Data API Not Configured", 'Please enter the REDCap Data API URL and/or API Token on the "Settings" tab');
+      throw new Error("REDCap data project configuration missing");
     }
   }
   function hasConf () {
     if (config) {
-      if (config.RC) {
-        if (config.RC.api && config.RC.apikey) return true;
+      if (config.RCD) {
+        if (config.RCD.api && config.RCD.apikey) return true;
       }
     }
     return false;
   } 
   return {
-    getPID: getPID,
     updateCRF: updateCRF,
     hasConf: hasConf,
-    checkConf,
+    checkConf: checkConf,
     getPDF: getPDF,
     clearCRF: clearCRF,
     post: post

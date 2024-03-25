@@ -57,9 +57,9 @@ self.LocalPDFTools = (()=> {
         LocalData.write(xpert).then((ids) => {
           updateTable(xpert);
           // update the pids
-          REDCap.getPID(xpert.map(e => {return e.sample_id})).then(sn => {
+          REDCapS.getPID(xpert.map(e => {return e.sample_id})).then(sn => {
             // upload the crfs
-            REDCap.updateCRF(sn).then(() => {
+            REDCapD.updateCRF(sn).then(() => {
               $(".file-message").text("or drag and drop files here");
               $("#processbtn").prop("disabled", true);
               $("#fileform").trigger("reset");
