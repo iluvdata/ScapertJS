@@ -234,7 +234,7 @@ class LocalData extends DataClass {
         reject(e);
       };
       request.onupgradeneeded = (e) => {
-        db = e.target.result;
+        const db = e.target.result;
         const objStore = db.createObjectStore("xpert_results", { keyPath: "cartridge_sn" });
         objStore.createIndex("search", "search", { multiEntry: true , unique: false});
         objStore.createIndex("sample_id", "sample_id", {unique: false});
@@ -245,7 +245,7 @@ class LocalData extends DataClass {
     });
   }
   static async write(xpert, update) {
-    const db = await initDB();
+    const db = await this.initDB();
     const transaction = db.transaction(["xpert_results"], "readwrite");
     const objStore = transaction.objectStore("xpert_results");
     return Promise.all(xpert.map(e => {
@@ -259,7 +259,7 @@ class LocalData extends DataClass {
   }
   static deleteRec(sn) {
     return new Promise(async (resolve) => {
-      const db = await initDB();
+      const db = await this.initDB();
       let result =  db.transaction("xpert_results", "readwrite").objectStore("xpert_results").delete(sn);
       result.onsuccess = e => resolve();
     })
@@ -280,7 +280,7 @@ class LocalData extends DataClass {
     });
   }
   static search(q, cb) {
-    initDB().then(db => {
+    this.initDB().then(db => {
       const idx = db.transaction("xpert_results").objectStore("xpert_results").index("search");
       const range = IDBKeyRange.bound(q, q + '\uffff');
       let result = idx.openCursor(range);
@@ -297,7 +297,7 @@ class LocalData extends DataClass {
     });
   }
   static async getAll(keys) {
-    const db = await initDB();
+    const db = await this.initDB();
     const os = db.transaction("xpert_results").objectStore("xpert_results");
     const xpert = await Promise.all(keys.map(key => {
       return new Promise((resolve, reject) => {
@@ -309,7 +309,7 @@ class LocalData extends DataClass {
     return xpert;
   }
   static getCSV() {
-    initDB().then (db => {
+    this.initDB().then (db => {
       const obs = db.transaction("xpert_results").objectStore("xpert_results");
       let result = obs.openCursor();
       let xpert = [];
@@ -348,10 +348,10 @@ class Utils {
     ["RCS", "RCD", "RCDB"].forEach(e => delete backup.config[e].apikey);
     if (Data.name === "LocalData") {
       backup.db = await new Promise(async function(resolve) {
-        db = await LocalData.initDB();
+        const db = await LocalData.initDB();
         const obs = db.transaction("xpert_results").objectStore("xpert_results");
         let result = obs.openCursor();
-        bdb = [];
+        let bdb = [];
         result.onsuccess = async (e) => {
           const cursor = e.target.result;
           if(cursor) {
