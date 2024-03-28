@@ -21,7 +21,7 @@ self.Encryption = (() => {
       script.onerror = function(e) {
         new bootstrap.Tab("#pills-setting-tab").show();
         showModal("Error", '<code>config.js</code> not found. Have you downloaded it to the base directory with <code>index.html</code>? '
-          + 'Click on "Settings" tab to download (and set up REDCap API Token).');
+          + 'Click on "Settings" tab to download (and set up REDCap API Tokens).');
         reject('"config.js" not found.');
       };
       script = document.documentElement.firstChild.appendChild(script);
@@ -54,14 +54,18 @@ self.Encryption = (() => {
       if (sapikey !== null) {
         let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
         config.RCS.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(sapikey, nonce, sodium.from_hex(key)));
-        localStorage.setItem("config", JSON.stringify(config));
+      }
+      let dbapikey = config.RCDB.apikey ? await getSecret(config.RCDB.apikey) : null;
+      if (dbapikey !== null) {
+        let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+        config.RCDB.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(dbapikey, nonce, sodium.from_hex(key)));
       }
       let dapikey = config.RCD.apikey ? await getSecret(config.RCD.apikey) : null;
       if (dapikey !== null) {
         let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
         config.RCD.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(dapikey, nonce, sodium.from_hex(key)));
-        localStorage.setItem("config", JSON.stringify(config));
       }
+      localStorage.setItem("config", JSON.stringify(config));
       let text = `function mySecret () {return "${ key }";}`;
       let element = document.createElement('a');
       element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
@@ -135,6 +139,104 @@ self.LocalConfig = (() => {
     save: save
   };
 })();
+self.rcData = (() => {
+  function search(s, cb) {
+    REDCapDB.get(`contains([sid], '${s}') or contains([pid], '${s}')`).then((data) => {
+      data = data.map((e) => {
+        return(e.data);
+      })
+      cb(data);
+    });
+  }
+  async function getAll(sn) {
+    return get("[csn] = '" + sn.join("' or [csn] ='") + "'");
+  }
+  async function getSamples(sample_id) {
+    return get("[sid] = '" + sample_id.join("' or [sid] ='") + "'");
+  }
+  async function get(filter) {
+    xpert = await REDCapDB.get(filter);
+    return (xpert.map((e) => { 
+      return(e.data);
+    }));
+  }
+  async function getPID(sample_id) {
+    return REDCapS.getPID(sample_id);
+  }
+  async function write(xpert, update) {
+    return REDCapDB.write(xpert, update); 
+  }
+  function deleteDB() {
+    return new Promise((resolve) => {
+      let data = {
+        content : "record",
+        type : "flat",
+        format : "json",
+        fields :  "csn"
+      }
+      REDCapDB.post(data).then((data) => {
+        if (data.length > 0) {
+          data = data.map(e => { return e.csn });
+          data = {
+            content : "record",
+            action : "delete",
+            records : data,
+            returnFormat : "json"
+          };
+          REDCapDB.post(data, undefined, { dataType : "text"} ).then((result) => {
+            clearErr();
+            showToast("Database Deleted");
+            resolve(result);
+          }).catch(e => console.log(e));
+        } else resolve();
+      });
+    });
+  }
+  async function deleteRec(sn) {
+    let data = {
+      content : "record",
+      action : "delete",
+      records : [sn]
+    };
+    return REDCapDB.post(data, undefined, { dataType : "text"});
+  }
+  function getCSV() {
+    REDCapDB.get("").then((data) => {
+      data = data.map((e) => {
+        return (e.data);
+      });
+      let keys = ['SAC_result', 'SAC_Ct', 'HPV_16_result', 'HPV_16_Ct', 'HPV_18_45_result', 'HPV_18_45_Ct', 'P3_result', 'P3_Ct', 'P4_result', 
+      'P4_Ct', 'P5_result', 'P5_Ct', 'restrict_result', 'mod_ct_result', 'sample_id', 'test_result', 'status', 'error', 'error_message', 
+      'start_time', 'end_time', 'instrument_sn', 'cartridge_sn', 'reagant_lot', 'notes', 'pid', 'uploaded'];
+      data = calcXpert(data);
+      data = data.map(x => {
+        return keys.map(key => {
+          if (['uploaded', 'start_time', 'end_time'].indexOf(key) >= 0) {
+            x[key] = luxon.DateTime.fromISO(x[key]);
+            x[key] = x[key].invalid === null ? x[key].toFormat("yyyy-MM-dd HH:mm:ss") : "";
+          } 
+          return x[key];
+        }).join(",");
+      }).join("\n");
+      let element = document.createElement('a');
+      element.setAttribute('href', "data:text/csv;charset=utf-8," + encodeURI(keys.join(",") + "\n" + data));
+      element.style.display = 'none';
+      element.setAttribute('download', "xpert.csv");
+      element.click();
+      element.remove();
+    });
+  }
+  return {
+    getPID: getPID,
+    getAll: getAll,
+    getSamples : getSamples,
+    getCSV: getCSV,
+    search: search,
+    write: write,
+    deleteDB: deleteDB,
+    deleteRec : deleteRec
+  };
+})();
 self.LocalData = (() => {
   function initDB() {
     return new Promise((resolve, reject) => {
@@ -170,60 +272,27 @@ self.LocalData = (() => {
       });
     }));
   }
-  async function updatePID(sample_id, pid) {
-    const db = await initDB();
-    const obs = db.transaction("xpert_results", "readwrite").objectStore("xpert_results");
-    const idx = obs.index("sample_id");
-    const only = IDBKeyRange.only(sample_id);
-    let result = idx.get(only);
-    return new Promise((resolve, reject) => {
-      result.onsuccess = e => {
-        let xpert = e.target.result;
-        xpert.pid = pid;
-        xpert.search = [xpert.sample_id, xpert.pid];
-        let put = obs.put(xpert);
-        // this should be the cartridge_sn
-        put.onsuccess = (p) => resolve(p.target.result);
-      };
-    });
-  }
-  async function crfDB(sn, id) {
-    const db = await initDB();
-    const obs = db.transaction("xpert_results", "readwrite").objectStore("xpert_results");
-    let result = await new Promise((resolve, reject) => {
-      const res = obs.get(sn);
-      res.onsuccess = e => resolve(e.target.result);
-      res.onerror = e => reject(e);
-    });
-    delete result.pdf;
-    result.uploaded = new Date();
-    result.crf_id = Number.parseInt(id);
-    return new Promise((resolve, reject) => {
-      res = obs.put(result);
-      res.onsuccess = e => resolve({ sn: e.target.result, uploaded: result.uploaded });
-      res.onerror = e => reject(e);
-    });
+  function deleteRec(sn) {
+    return new Promise(async (resolve) => {
+      const db = await initDB();
+      let result =  db.transaction("xpert_results", "readwrite").objectStore("xpert_results").delete(sn);
+      result.onsuccess = e => resolve();
+    })
   }
   function deleteDB() {
-    $(".modal-footer").prepend(`<button id="confirmDel" class="btn btn-danger">Confirm Delete</button>`);
-    $("#myModal").on('hidden.bs.modal', e => { $("#confirmDel").remove(); });
-    $("#confirmDel").click((el) => { 
-      const dbdel = indexedDB.deleteDatabase("xpertdb");
+    const dbdel = indexedDB.deleteDatabase("xpertdb");
+    return new Promise((resolve) => {
       dbdel.onerror = (e) => {console.log(e)};
       dbdel.onsuccess = (e) => { 
         clearErr();
-        $("#resTbl").addClass("d-none");
-        $("#search").val("");
-        $("#myModal").modal("hide");
         showToast("Database Deleted");
+        resolve();
       };
       dbdel.onblocked = (e) => {
         showErr("Database Delete Blocked: refresh browser and retry.", "No additional info");
-        $("#myModal").modal("hide");
+        resolve();
       };
-        
     });
-    showModal("Confirm Delete DB?", "This cannot be undone. Consider backup!");
   }
   function search(q, cb) {
     initDB().then(db => {
@@ -242,7 +311,7 @@ self.LocalData = (() => {
       };
     });
   }
-  async function dbGetAll(keys) {
+  async function getAll(keys) {
     const db = await initDB();
     const os = db.transaction("xpert_results").objectStore("xpert_results");
     const xpert = await Promise.all(keys.map(key => {
@@ -284,44 +353,42 @@ self.LocalData = (() => {
       }
     });
   }
-  function updateCRF(sn) {
-    return REDCapD.updateCRF(sn);
-  }
   function getPID(sample_id) {
     return REDCapS.getPID(sample_id);
   }
   return {
-    dbGetAll: dbGetAll,
+    getAll: getAll,
     search: search,
     initDB: initDB,
     write: write,
     deleteDB: deleteDB,
+    deleteRec: deleteRec,
     getCSV: getCSV,
-    updatePID: updatePID,
-    updateCRF: updateCRF,
-    crfDB: crfDB,
     getPID: getPID
   };
 })();
 self.LocalUtils = (() => {
-  function backup() {
+  async function backup() {
     REDCapS.checkConf();
     let backup = {};
     backup.config = {};
     Object.assign(backup.config, config);
-    delete backup.config.RC;
-    backup.db = [];
-    LocalData.initDB().then (db => {
+    delete backup.config.RCS;
+    delete backup.config.RCD;
+    delete backup.config.RCDB;
+    backup.db = await new Promise(async function(resolve) {
+      db = await LocalData.initDB();
       const obs = db.transaction("xpert_results").objectStore("xpert_results");
       let result = obs.openCursor();
+      bdb = [];
       result.onsuccess = async (e) => {
         const cursor = e.target.result;
         if(cursor) {
-          backup.db.push(cursor.value);
+          bdb.push(cursor.value);
           cursor.continue();
         } else {
           // Convert pdfs to base64
-          backup.db = await Promise.all(backup.db.map(async xpert => {
+          resolve(await Promise.all(bdb.map(async xpert => {
             return new Promise((resolve) => {
               if (xpert.pdf) {
                 const blob = new Blob([xpert.pdf]);
@@ -336,37 +403,37 @@ self.LocalUtils = (() => {
                 resolve(xpert);
               }
             });
-          }));
-          let data = {
-            content : "fileRepository",
-            action : "list",
-            format : "json",
-            returnFormat : "json"
-          };
-          const key = await Encryption.getSecret(config.RCS.apikey);
-          result = await REDCapS.post(data, key)
-          .catch(e => {
-            showErr("Unable to get file repository", "REDCap Error: " + e);
-          });
-          let file = result.find(e => e.name === "Scrapert_Backup.json");
-          if (file) {
-            data.action = "delete";
-            data.doc_id = file.doc_id;
-            result = await REDCapS.post(data, key, { dataType: "text"})
-            .catch(e => {
-              showErr("Unable to delete prior backup", "REDCap Error: " + e);
-            });
-          }
-          data = new FormData();
-          data.set("content", "fileRepository");
-          data.set("action", "import");
-          data.set("returnFormat", "json");
-          data.set("file", new Blob([JSON.stringify(backup)], {type: "application/json"}), "Scrapert_Backup.json");
-          result = await REDCapS.post(data, key);
-          showToast("Backup Complete (Backed up to REDCap as Scrapert_Backup.json)");
+          })));
         }
-      };
+      }
     });
+    let data = {
+      content : "fileRepository",
+      action : "list",
+      format : "json",
+      returnFormat : "json"
+    };
+    const key = await Encryption.getSecret(config.RCS.apikey);
+    result = await REDCapS.post(data, key)
+    .catch(e => {
+      showErr("Unable to get file repository", "REDCap Error: " + e);
+    });
+    let file = result.find(e => e.name === "Scrapert_Backup.json");
+    if (file) {
+      data.action = "delete";
+      data.doc_id = file.doc_id;
+      result = await REDCapS.post(data, key, { dataType: "text"})
+      .catch(e => {
+        showErr("Unable to delete prior backup", "REDCap Error: " + e);
+      });
+    }
+    data = new FormData();
+    data.set("content", "fileRepository");
+    data.set("action", "import");
+    data.set("returnFormat", "json");
+    data.set("file", new Blob([JSON.stringify(backup)], {type: "application/json"}), "Scrapert_Backup.json");
+    result = await REDCapS.post(data, key);
+    showToast("Backup Complete (Backed up to Specimen REDCap as Scrapert_Backup.json)");
   }
   async function restoreBackup() {
     REDCapS.checkConf();
@@ -408,9 +475,11 @@ self.LocalUtils = (() => {
     // Save the datq (keep our credentials!)
     const RCS = config.RCS;
     const RCD = config.RCD;
+    const RCDB = config.RCDB;
     config = file.config;
     config.RCD = RCD;
     config.RCS = RCS;
+    config.RCDB = RCDB;
     localStorage.setItem("config", JSON.stringify(config));
     Data.write(file.db, true);
     showToast("Backup Restored");

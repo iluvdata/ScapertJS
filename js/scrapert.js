@@ -29,22 +29,20 @@ $( document ).ready(async () => {
     $("#pidcolumn").text(config.pidName);
   }
   // do we need config?
-  Encryption.getSecret(config.RCS.apikey).then(() => {
-    REDCapS.checkConf();
-    REDCapD.checkConf();
-  });
+  REDCapS.checkConf();
 });
 async function setupEnviroment() {
   const local = window.location.protocol === "file:";
+  if (local) self.Config = LocalConfig;
+  config = await Config.getConfig();
   if (local) {
-    self.Config = LocalConfig;
-    self.Data = LocalData;
+    if (REDCapDB.hasConf()) self.Data = rcData;
+    else self.Data = LocalData;
     self.Utils = LocalUtils;
     self.PDFTools = LocalPDFTools;
   }
-  config = await Config.getConfig()
   if(config.debug && local) $("#utilbtns").append(`<button id="deletedbbtn" type="button" class="btn btn-warning" 
-                                                   onclick="LocalData.deleteDB()">Delete DB</button>`);
+                                                   onclick="deleteDB()">Delete DB</button>`);
 }
 $(document).on('change', '.file-input', function() {
   let filesCount = $(this)[0].files.length;
@@ -109,12 +107,8 @@ function del(sn, sampleId) {
     }).trigger("focus");
 }
 function confDel(sn) {
-  REDCap.clearCRF(sn).then((rc) => {
-    return new Promise(async (resolve) => {
-      const db = await initDB();
-      let result =  db.transaction("xpert_results", "readwrite").objectStore("xpert_results").delete(sn);
-      result.onsuccess = e => resolve();
-    }).then(e => {
+  REDCapD.clearCRF(sn).then((rc) => {
+    Data.deleteRec(sn).then(e => {
       showToast("Sample Successfully Deleted");
       $("#resTbl").addClass("d-none");
       $("#search").val("");
@@ -131,7 +125,7 @@ function updateTable(data) {
       tbody.append(`<tr><td><a href="#" class="link-underline-danger"
           onClick="del('${data[d].cartridge_sn }', '${data[d].sample_id}');">${data[d].sample_id}</a></td>
         <td ${ usePID ? "" : "class='d-none'"} id="sid${data[d].sample_id}">
-          ${data[d].pid === undefined ? "<a onclick=\"lookupPID(['" + data[d].sample_id + "'])\">" +  
+          ${data[d].pid === undefined ? "<a onclick=\"lookupPID('" + data[d].sample_id + "')\">" +  
             "<img src=\"images/search.svg\" alt=\"Lookup PID\"/></a>" : data[d].pid }</td>
         <td>${data[d].cartridge_sn}</td>
         <td>${data[d].error}</td>
@@ -145,7 +139,7 @@ function updateTable(data) {
         <td><a onclick="PDFTools.getPDF('${data[d].cartridge_sn}')"><img src="images/file-earmark-pdf.svg" alt="View PDF"></a>
             <a onclick="PDFTools.dlPDF('${data[d].cartridge_sn}')"><img src="images/download.svg" alt="Download PDF"></a></td>
         <td id="ul${data[d].cartridge_sn}">${data[d].uploaded === undefined ? 
-          "<a onclick=\"Data.updateCRF(['" + data[d].cartridge_sn + "']);\">" +  
+          "<a onclick=\"REDCapD.updateCRF(['" + data[d].cartridge_sn + "']);\">" +  
           "<img src=\"images/cloud-upload.svg\" alt=\"Import\"/></a>" : dateFormat.format(new Date(data[d].uploaded))}</td></tr>`);
     }
   } else tbody.append("<tr><td colspan='13' class='text-middle'>No results found</td></tr>");
@@ -216,7 +210,12 @@ function getSettings() {
           <div class="col-md-9"><input type="text" class="form-control" name="sapi" id="sapi" value="${ config.RCS && config.RCS.api ? config.RCS.api : ""}" 
              required placeholder="https://..."></div></div>` + 
              passcode("Specimen API Token", "sapikey", !REDCapS.hasConf()));
-
+  sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Database Store</div></div>');
+  sTab.append(`<div class="md-3 row">
+          <label for="dbapi" class="col-md-3 col-form-label text-end fw-bold">Database API URL</label>
+          <div class="col-md-9"><input type="text" class="form-control" name="dbapi" id="dbapi" value="${ config.RCDB && config.RCDB.api ? config.RCDB.api : ""}" 
+            placeholder="https://...  (leave blank to use browser database)"></div></div>` + 
+            passcode("Database API Token", "dbapikey", REDCapDB.hasConf()));
   sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Data System Settings</div></div>');
   sTab.append(`<div class="md-3 row">
           <label for="dapi" class="col-md-3 col-form-label text-end fw-bold">Data API URL</label>
@@ -253,6 +252,15 @@ function saveSettings() {
       } else {
         config.RCD.api = el.value;
       }
+    } else if(el.name.startsWith("dbapi")) {
+      if (!config.RCDB) config.RCDB = {};
+      if (el.name.startsWith("dbapikey")) {
+          if (el.value !== "") {
+            config.RCDB.apikey = await Encryption.encrypt(el.value);
+          }
+      } else {
+        config.RCDB.api = el.value;
+      }
     }
      else if(!el.name.match(/^(ct|use).*/)) {
       config[el.name] = el.type === "checkbox" ? el.checked :
@@ -264,7 +272,12 @@ function saveSettings() {
     }
   });
   config.version = version;
-  Config.save(config).then(showToast("Settings Saved")).catch(err => showModal("Unable to Save Settings", err));
+  Config.save(config).then(() => {
+    if (REDCapDB.hasConf()) self.Data = rcData;
+    else self.Data = LocalData;
+    showToast("Settings Saved");
+  }).catch(err => showModal("Unable to Save Settings", err));
+
 }
 function showModal(title, body) {
   $("#myModalLabel").text(title);
@@ -276,4 +289,16 @@ function showToast(msg) {
   $(".toast-body").text(msg);
   const myToast = new bootstrap.Toast(".toast");
   myToast.show();
+}
+function deleteDB () {
+  $(".modal-footer").prepend(`<button id="confirmDel" class="btn btn-danger">Confirm Delete</button>`);
+  $("#myModal").on('hidden.bs.modal', e => { $("#confirmDel").remove(); });
+  $("#confirmDel").click(() => {
+    Data.deleteDB().then(() => {
+      $("#resTbl").addClass("d-none");
+      $("#search").val("");
+      $("#myModal").modal("hide");
+    }).catch((e) => console.error(e));
+  });
+  showModal("Confirm Delete DB?", "This cannot be undone. Consider backup!");
 }

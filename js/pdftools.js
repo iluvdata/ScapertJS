@@ -54,12 +54,12 @@ self.LocalPDFTools = (()=> {
         })
       ).then(async (xpert) => {
         xpert =  xpert.flat().filter(x => x !== null);
-        LocalData.write(xpert).then((ids) => {
+        Data.write(xpert).then((ids) => {
           updateTable(xpert);
           // update the pids
-          REDCapS.getPID(xpert.map(e => {return e.sample_id})).then(sn => {
+          REDCapS.getPID(xpert).then(xpert => {
             // upload the crfs
-            REDCapD.updateCRF(sn).then(() => {
+            REDCapD.updateCRF(xpert).then(() => {
               $(".file-message").text("or drag and drop files here");
               $("#processbtn").prop("disabled", true);
               $("#fileform").trigger("reset");
@@ -148,15 +148,16 @@ self.LocalPDFTools = (()=> {
     return tab;
   }
   async function getPDFLink(sn) {
-    const xpert = (await LocalData.dbGetAll([sn]))[0];
+    const xpert = (await Data.getAll([sn]))[0];
     let file = undefined;
     if (xpert.uploaded) {
-      file =  await REDCap.getPDF(xpert.crf_id).catch(e => {
+      file =  await REDCapD.getPDF(xpert.crf_id).catch(e => {
         clearErr();
         showErr("REDCap: Unable to download PDF file", e.message);
         throw new Error("Unable to get PDF file");
       });
-    } else file = new Blob([xpert.pdf], {type: "application/pdf"});
+    } else if (xpert.pdf) file = new Blob([xpert.pdf], {type: "application/pdf"});
+    else file = await REDCapDB.getPDF(sn);
     if (file === undefined) throw new Error("Unable to get PDF file");
     let element = document.createElement('a');
     element.setAttribute('href', URL.createObjectURL(file));
