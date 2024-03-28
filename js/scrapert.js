@@ -194,7 +194,7 @@ function getSettings() {
           <label for="RCDBapi" class="col-md-3 col-form-label text-end fw-bold">Database API URL</label>
           <div class="col-md-9"><input type="text" class="form-control" name="RCDBapi" id="RCDBapi" value="${ config.RCDB && config.RCDB.api ? config.RCDB.api : ""}" 
             placeholder="https://...  (leave blank to use browser database)"></div></div>` + 
-            passcode("Database API Token", "RCDBapikey", !REDCapDB.hasConf()));
+            passcode("Database API Token", "RCDBapikey", REDCapDB.hasConf()));
   sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Data System Settings</div></div>');
   sTab.append(`<div class="md-3 row">
           <label for="RCDapi" class="col-md-3 col-form-label text-end fw-bold">Data API URL</label>
