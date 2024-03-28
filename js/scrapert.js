@@ -33,12 +33,14 @@ $( document ).ready(async () => {
 });
 async function setupEnviroment() {
   const local = window.location.protocol === "file:";
-  if (local) self.Config = LocalConfig;
   config = await Config.getConfig();
+  self.Encryption = new Encrypt();
+  self.REDCapS = new RCS();
+  self.REDCapDB = new RCDB();
+  self.REDCapD = new RCD();
   if (local) {
-    if (REDCapDB.hasConf()) self.Data = rcData;
+    if (REDCapDB.hasConf()) self.Data = RCData;
     else self.Data = LocalData;
-    self.Utils = LocalUtils;
     self.PDFTools = LocalPDFTools;
   }
   if(config.debug && local) $("#utilbtns").append(`<button id="deletedbbtn" type="button" class="btn btn-warning" 
@@ -215,7 +217,7 @@ function getSettings() {
           <label for="dbapi" class="col-md-3 col-form-label text-end fw-bold">Database API URL</label>
           <div class="col-md-9"><input type="text" class="form-control" name="dbapi" id="dbapi" value="${ config.RCDB && config.RCDB.api ? config.RCDB.api : ""}" 
             placeholder="https://...  (leave blank to use browser database)"></div></div>` + 
-            passcode("Database API Token", "dbapikey", REDCapDB.hasConf()));
+            passcode("Database API Token", "dbapikey", !REDCapDB.hasConf()));
   sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Data System Settings</div></div>');
   sTab.append(`<div class="md-3 row">
           <label for="dapi" class="col-md-3 col-form-label text-end fw-bold">Data API URL</label>
@@ -233,7 +235,7 @@ function getSettings() {
   } 
 }
 function saveSettings() { 
-  $("#settingsForm input:not(.btn),select").each(async (i, el) => {
+  Promise.all($("#settingsForm input:not(.btn),select").map(async (i, el) => {
     if(el.name.startsWith("sapi")) {
       if (!config.RCS) config.RCS = {};
       if (el.name.startsWith("sapikey")) {
@@ -262,7 +264,7 @@ function saveSettings() {
         config.RCDB.api = el.value;
       }
     }
-     else if(!el.name.match(/^(ct|use).*/)) {
+    else if(!el.name.match(/^(ct|use).*/)) {
       config[el.name] = el.type === "checkbox" ? el.checked :
         (el.value === "" ? null : el.value);
     } else {
@@ -270,14 +272,14 @@ function saveSettings() {
       if(el.name.startsWith("ct")) config.xpert[name].ct = el.value === "" ? null : el.value
       else config.xpert[name].use = el.checked
     }
+  })).then(() => { 
+    config.version = version;
+    Config.save(config).then(() => {
+      if (REDCapDB.hasConf()) self.Data = RCData;
+      else self.Data = LocalData;
+      showToast("Settings Saved");
+    }).catch(err => showModal("Unable to Save Settings", err));
   });
-  config.version = version;
-  Config.save(config).then(() => {
-    if (REDCapDB.hasConf()) self.Data = rcData;
-    else self.Data = LocalData;
-    showToast("Settings Saved");
-  }).catch(err => showModal("Unable to Save Settings", err));
-
 }
 function showModal(title, body) {
   $("#myModalLabel").text(title);

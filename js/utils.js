@@ -1,16 +1,9 @@
-self.Encryption = (() => {
-  async function encrypt(message) {
-    let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-    const key = await loadKey();
-    return sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(message, nonce, sodium.from_hex(key)));
-  } 
-  function decrypt(nonce_and_cipher, key) {
-    let nonce_cipher = nonce_and_cipher.split("_");
-    let nonce = sodium.from_hex(nonce_cipher[0]),
-      cipher = sodium.from_hex(nonce_cipher[1]);
-    return sodium.to_string(sodium.crypto_secretbox_open_easy(cipher, nonce, sodium.from_hex(key)));
+class Encrypt {
+  #key;
+  constructor() {
+   this.#loadKey().then(key => this.#key = key);
   }
-  function loadKey() {
+  #loadKey() {
     return new Promise((resolve, reject) => {
       let script = document.createElement("script");
       script.src = "config.js";
@@ -27,67 +20,67 @@ self.Encryption = (() => {
       script = document.documentElement.firstChild.appendChild(script);
     });
   }
-  async function getSecret(secret) {
-    const key = await loadKey();
+  async encrypt(message) {
+    let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+    return sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(message, nonce, sodium.from_hex(this.#key)));
+  } 
+  #decrypt(nonce_and_cipher) {
+    let nonce_cipher = nonce_and_cipher.split("_");
+    let nonce = sodium.from_hex(nonce_cipher[0]),
+      cipher = sodium.from_hex(nonce_cipher[1]);
+    return sodium.to_string(sodium.crypto_secretbox_open_easy(cipher, nonce, sodium.from_hex(this.#key)));
+  }
+  async getSecret(secret) {
     if (!secret) return null;
     let txt = null;
     try {
-      txt = decrypt(secret, key);
+      txt = this.#decrypt(secret);
     } catch (e) {
       if (e.message.includes("wrong secret key")) {
         showModal("Secret Key Mismatch", `Unfortuneately the key in <code>config.js</code> does not decode the current REDCap API Token.
           <ol><li>The REDCap API Token will be unset</li><li>Reenter the REDCap API Token on the "Settings" tab</li></ol>`);
-          config.RC.apikey = null;
+          config.RCS.apikey = null;
+          config.RCD.apikey = null;
+          config.RCDB.apikey = null;
           localStorage.setItem("config", JSON.stringify(config));
           new bootstrap.Tab("#pills-setting-tab").show();
       } else showModal("Error", e.message);
     }
     return txt;
   }
-  function newKey() {
+  newKey() {
     $(".modal-footer").prepend(`<button id="confirmKey" class="btn btn-danger">Download</button>`);
     $("#confirmKey").click(async (e) => { 
-      // get old key
-      let key = sodium.to_hex(sodium.crypto_secretbox_keygen());
+      // get new key
+      let newkey = sodium.to_hex(sodium.crypto_secretbox_keygen());
       // Reencrypt old apikey if present
-      let sapikey = config.RCS.apikey ? await getSecret(config.RCS.apikey) : null;
-      if (sapikey !== null) {
-        let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-        config.RCS.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(sapikey, nonce, sodium.from_hex(key)));
-      }
-      let dbapikey = config.RCDB.apikey ? await getSecret(config.RCDB.apikey) : null;
-      if (dbapikey !== null) {
-        let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-        config.RCDB.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(dbapikey, nonce, sodium.from_hex(key)));
-      }
-      let dapikey = config.RCD.apikey ? await getSecret(config.RCD.apikey) : null;
-      if (dapikey !== null) {
-        let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
-        config.RCD.apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(dapikey, nonce, sodium.from_hex(key)));
-      }
-      localStorage.setItem("config", JSON.stringify(config));
-      let text = `function mySecret () {return "${ key }";}`;
-      let element = document.createElement('a');
-      element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
-      element.setAttribute('download', "config.js");
-      element.style.display = 'none';
-      document.body.appendChild(element);
-      element.click();
-      document.body.removeChild(element);
-        $("#myModal").modal("hide");
+      Promise.all(["RCS", "RCDB", "RCD"].map(async e => {
+        let curkey = config[e].apikey ? await this.getSecret(config[e].apikey) : null;
+        if (curkey) {
+          let nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+          config[e].apikey = sodium.to_hex(nonce) + "_" + sodium.to_hex(sodium.crypto_secretbox_easy(curkey, nonce, sodium.from_hex(newkey)));
+        }
+      })).then(() => {
+        localStorage.setItem("config", JSON.stringify(config));
+        this.#key = newkey;
+        let text = `function mySecret () {return "${ newkey }";}`;
+        let element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+        element.setAttribute('download', "config.js");
+        element.style.display = 'none';
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+          $("#myModal").modal("hide");
+      });
     });
     showModal("Continue?", "You must save this file as 'config.js' in the root directory with 'index.html' in order to access any authentication keys.");
     $("#myModal").on('hidden.bs.modal', e => { $("#confirmKey").remove(); });
   }
-  return {
-    encrypt,
-    getSecret,
-    newKey
-  };
-})();
+}
 var config = {};
-self.LocalConfig = (() => {
-  async function getConfig() {
+class Config {
+  static async getConfig() {
     if(!localStorage.getItem("config")) {
       config = {
         usePID: true,
@@ -126,21 +119,26 @@ self.LocalConfig = (() => {
         api: null,
         apikey: null
       }
+      config.RCDB = {
+        api: null,
+        apikey: null
+      }
       localStorage.setItem("config", JSON.stringify(config));
     }
    return JSON.parse(localStorage.getItem("config"));
   }
-  async function save() {
+  static async save() {
     localStorage.setItem("config", JSON.stringify(config));
     return;
   }
-  return {
-    getConfig: getConfig,
-    save: save
-  };
-})();
-self.rcData = (() => {
-  function search(s, cb) {
+}
+class DataClass {
+  static async getPID(sample_id) {
+    return REDCapS.getPID(sample_id);
+  }
+}
+class RCData extends DataClass {
+  static search(s, cb) {
     REDCapDB.get(`contains([sid], '${s}') or contains([pid], '${s}')`).then((data) => {
       data = data.map((e) => {
         return(e.data);
@@ -148,25 +146,22 @@ self.rcData = (() => {
       cb(data);
     });
   }
-  async function getAll(sn) {
+  static async getAll(sn) {
     return get("[csn] = '" + sn.join("' or [csn] ='") + "'");
   }
-  async function getSamples(sample_id) {
+  static async getSamples(sample_id) {
     return get("[sid] = '" + sample_id.join("' or [sid] ='") + "'");
   }
-  async function get(filter) {
+  static async get(filter) {
     xpert = await REDCapDB.get(filter);
     return (xpert.map((e) => { 
       return(e.data);
     }));
   }
-  async function getPID(sample_id) {
-    return REDCapS.getPID(sample_id);
-  }
-  async function write(xpert, update) {
+  static async write(xpert, update) {
     return REDCapDB.write(xpert, update); 
   }
-  function deleteDB() {
+  static  deleteDB() {
     return new Promise((resolve) => {
       let data = {
         content : "record",
@@ -183,7 +178,7 @@ self.rcData = (() => {
             records : data,
             returnFormat : "json"
           };
-          REDCapDB.post(data, undefined, { dataType : "text"} ).then((result) => {
+          REDCapDB.post(data, { dataType : "text"} ).then((result) => {
             clearErr();
             showToast("Database Deleted");
             resolve(result);
@@ -192,7 +187,7 @@ self.rcData = (() => {
       });
     });
   }
-  async function deleteRec(sn) {
+  static async deleteRec(sn) {
     let data = {
       content : "record",
       action : "delete",
@@ -200,7 +195,7 @@ self.rcData = (() => {
     };
     return REDCapDB.post(data, undefined, { dataType : "text"});
   }
-  function getCSV() {
+  async getCSV() {
     REDCapDB.get("").then((data) => {
       data = data.map((e) => {
         return (e.data);
@@ -226,19 +221,9 @@ self.rcData = (() => {
       element.remove();
     });
   }
-  return {
-    getPID: getPID,
-    getAll: getAll,
-    getSamples : getSamples,
-    getCSV: getCSV,
-    search: search,
-    write: write,
-    deleteDB: deleteDB,
-    deleteRec : deleteRec
-  };
-})();
-self.LocalData = (() => {
-  function initDB() {
+}
+class LocalData extends DataClass {
+  static initDB() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open("xpertdb", version);
       request.onsuccess = (e) => {
@@ -259,7 +244,7 @@ self.LocalData = (() => {
       };
     });
   }
-  async function write(xpert, update) {
+  static async write(xpert, update) {
     const db = await initDB();
     const transaction = db.transaction(["xpert_results"], "readwrite");
     const objStore = transaction.objectStore("xpert_results");
@@ -272,14 +257,14 @@ self.LocalData = (() => {
       });
     }));
   }
-  function deleteRec(sn) {
+  static deleteRec(sn) {
     return new Promise(async (resolve) => {
       const db = await initDB();
       let result =  db.transaction("xpert_results", "readwrite").objectStore("xpert_results").delete(sn);
       result.onsuccess = e => resolve();
     })
   }
-  function deleteDB() {
+  static deleteDB() {
     const dbdel = indexedDB.deleteDatabase("xpertdb");
     return new Promise((resolve) => {
       dbdel.onerror = (e) => {console.log(e)};
@@ -294,7 +279,7 @@ self.LocalData = (() => {
       };
     });
   }
-  function search(q, cb) {
+  static search(q, cb) {
     initDB().then(db => {
       const idx = db.transaction("xpert_results").objectStore("xpert_results").index("search");
       const range = IDBKeyRange.bound(q, q + '\uffff');
@@ -311,7 +296,7 @@ self.LocalData = (() => {
       };
     });
   }
-  async function getAll(keys) {
+  static async getAll(keys) {
     const db = await initDB();
     const os = db.transaction("xpert_results").objectStore("xpert_results");
     const xpert = await Promise.all(keys.map(key => {
@@ -323,7 +308,7 @@ self.LocalData = (() => {
     }));
     return xpert;
   }
-  function getCSV() {
+  static getCSV() {
     initDB().then (db => {
       const obs = db.transaction("xpert_results").objectStore("xpert_results");
       let result = obs.openCursor();
@@ -353,76 +338,62 @@ self.LocalData = (() => {
       }
     });
   }
-  function getPID(sample_id) {
-    return REDCapS.getPID(sample_id);
-  }
-  return {
-    getAll: getAll,
-    search: search,
-    initDB: initDB,
-    write: write,
-    deleteDB: deleteDB,
-    deleteRec: deleteRec,
-    getCSV: getCSV,
-    getPID: getPID
-  };
-})();
-self.LocalUtils = (() => {
-  async function backup() {
+}
+class Utils {
+  static async backup() {
     REDCapS.checkConf();
     let backup = {};
-    backup.config = {};
-    Object.assign(backup.config, config);
-    delete backup.config.RCS;
-    delete backup.config.RCD;
-    delete backup.config.RCDB;
-    backup.db = await new Promise(async function(resolve) {
-      db = await LocalData.initDB();
-      const obs = db.transaction("xpert_results").objectStore("xpert_results");
-      let result = obs.openCursor();
-      bdb = [];
-      result.onsuccess = async (e) => {
-        const cursor = e.target.result;
-        if(cursor) {
-          bdb.push(cursor.value);
-          cursor.continue();
-        } else {
-          // Convert pdfs to base64
-          resolve(await Promise.all(bdb.map(async xpert => {
-            return new Promise((resolve) => {
-              if (xpert.pdf) {
-                const blob = new Blob([xpert.pdf]);
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                  const dataUrl = event.target.result;
-                  xpert.pdf = dataUrl.split(',')[1];
+    // Deep clone
+    backup.config = structuredClone(config);
+    ["RCS", "RCD", "RCDB"].forEach(e => delete backup.config[e].apikey);
+    if (Data.name === "LocalData") {
+      backup.db = await new Promise(async function(resolve) {
+        db = await LocalData.initDB();
+        const obs = db.transaction("xpert_results").objectStore("xpert_results");
+        let result = obs.openCursor();
+        bdb = [];
+        result.onsuccess = async (e) => {
+          const cursor = e.target.result;
+          if(cursor) {
+            bdb.push(cursor.value);
+            cursor.continue();
+          } else {
+            // Convert pdfs to base64
+            resolve(await Promise.all(bdb.map(async xpert => {
+              return new Promise((resolve) => {
+                if (xpert.pdf) {
+                  const blob = new Blob([xpert.pdf]);
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    const dataUrl = event.target.result;
+                    xpert.pdf = dataUrl.split(',')[1];
+                    resolve(xpert);
+                  };
+                  reader.readAsDataURL(blob);
+                } else {
                   resolve(xpert);
-                };
-                reader.readAsDataURL(blob);
-              } else {
-                resolve(xpert);
-              }
-            });
-          })));
+                }
+              });
+            })));
+          }
         }
-      }
-    });
+      });
+    }
     let data = {
       content : "fileRepository",
       action : "list",
       format : "json",
       returnFormat : "json"
     };
-    const key = await Encryption.getSecret(config.RCS.apikey);
-    result = await REDCapS.post(data, key)
+    let result = await REDCapS.post(data)
     .catch(e => {
-      showErr("Unable to get file repository", "REDCap Error: " + e);
+      showModal("Unable to get file repository", e);
     });
     let file = result.find(e => e.name === "Scrapert_Backup.json");
     if (file) {
       data.action = "delete";
       data.doc_id = file.doc_id;
-      result = await REDCapS.post(data, key, { dataType: "text"})
+      result = await REDCapS.post(data, { dataType: "text"})
       .catch(e => {
         showErr("Unable to delete prior backup", "REDCap Error: " + e);
       });
@@ -432,10 +403,10 @@ self.LocalUtils = (() => {
     data.set("action", "import");
     data.set("returnFormat", "json");
     data.set("file", new Blob([JSON.stringify(backup)], {type: "application/json"}), "Scrapert_Backup.json");
-    result = await REDCapS.post(data, key);
+    result = await REDCapS.post(data);
     showToast("Backup Complete (Backed up to Specimen REDCap as Scrapert_Backup.json)");
   }
-  async function restoreBackup() {
+  static async restoreBackup() {
     REDCapS.checkConf();
     let data = {
       content : "fileRepository",
@@ -443,8 +414,7 @@ self.LocalUtils = (() => {
       format : "json",
       returnFormat : "json"
     };
-    const key = await Encryption.getSecret(config.RCS.apikey);
-    result = await REDCapS.post(data, key)
+    let result = await REDCapS.post(data)
     .catch(e => {
       showModal("Unable to get file repository", "REDCap Error: " + e);
     });
@@ -455,37 +425,36 @@ self.LocalUtils = (() => {
       doc_id: file.doc_id,
       returnFormat: "json"
     };
-    file = await REDCapS.post(data, key, {dataType: "json"})
+    file = await REDCapS.post(data, {dataType: "json"})
       .catch(e => {
         showModal("Unable to download file", "REDCap Error: " + e.message);
       });
-    // Convert pdfs from Base64
-    file.db = await Promise.all(file.db.map(db => {
-      return new Promise((resolve) => {
-        if (db.pdf) {
-          const dURL = "data:application/pdf;base64," + db.pdf;
-          fetch(dURL).then(res => res.arrayBuffer())
-            .then(buffer => {
-              db.pdf = buffer;
-              resolve(db);
-            });
-        } else resolve(db);
-      });
-    }));
+
+    if (Data.name === "LocalData") {
+      // Convert pdfs from Base64
+      file.db = await Promise.all(file.db.map(db => {
+        return new Promise((resolve) => {
+          if (db.pdf) {
+            const dURL = "data:application/pdf;base64," + db.pdf;
+            fetch(dURL).then(res => res.arrayBuffer())
+              .then(buffer => {
+                db.pdf = buffer;
+                resolve(db);
+              });
+          } else resolve(db);
+        });
+      }));
+      Data.write(file.db, true);
+    }
     // Save the datq (keep our credentials!)
-    const RCS = config.RCS;
-    const RCD = config.RCD;
-    const RCDB = config.RCDB;
+    const RCS = config.RCS.apikey;
+    const RCD = config.RCD.apikey;
+    const RCDB = config.RCDB.apikey;
     config = file.config;
-    config.RCD = RCD;
-    config.RCS = RCS;
-    config.RCDB = RCDB;
+    config.RCD.apikey = RCD;
+    config.RCS.apikey = RCS;
+    config.RCDB.apikey = RCDB;
     localStorage.setItem("config", JSON.stringify(config));
-    Data.write(file.db, true);
     showToast("Backup Restored");
   }
-  return {
-    backup: backup,
-    restoreBackup: restoreBackup
-  }
-})();
+}

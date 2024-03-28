@@ -1,4 +1,4 @@
-self.LocalPDFTools = (()=> {
+LocalPDFTools = (()=> {
   function upload() {
     clearErr();
     let xpertPromises = [];
