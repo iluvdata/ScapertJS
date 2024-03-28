@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ODM xmlns="http://www.cdisc.org/ns/odm/v1.3" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:redcap="https://projectredcap.org" xsi:schemaLocation="http://www.cdisc.org/ns/odm/v1.3 schema/odm/ODM1-3-1.xsd" ODMVersion="1.3.1" FileOID="000-00-0000" FileType="Snapshot" Description="Xpert Test Results" AsOfDateTime="2024-03-28T16:04:01" CreationDateTime="2024-03-28T16:04:01" SourceSystem="REDCap" SourceSystemVersion="14.0.14">
+<Study OID="Project.XpertTestResults">
+<GlobalVariables>
+	<StudyName>Xpert Test Results</StudyName>
+	<StudyDescription>This file contains the metadata, events, and data for REDCap project "Xpert Test Results".</StudyDescription>
+	<ProtocolName>Xpert Test Results</ProtocolName>
+	<redcap:RecordAutonumberingEnabled>0</redcap:RecordAutonumberingEnabled>
+	<redcap:CustomRecordLabel></redcap:CustomRecordLabel>
+	<redcap:SecondaryUniqueField></redcap:SecondaryUniqueField>
+	<redcap:SchedulingEnabled>0</redcap:SchedulingEnabled>
+	<redcap:SurveysEnabled>0</redcap:SurveysEnabled>
+	<redcap:SurveyInvitationEmailField></redcap:SurveyInvitationEmailField>
+	<redcap:DisplayTodayNowButton>0</redcap:DisplayTodayNowButton>
+	<redcap:PreventBranchingEraseValues>0</redcap:PreventBranchingEraseValues>
+	<redcap:RequireChangeReason>0</redcap:RequireChangeReason>
+	<redcap:DataHistoryPopup>0</redcap:DataHistoryPopup>
+	<redcap:OrderRecordsByField></redcap:OrderRecordsByField>
+	<redcap:MyCapEnabled>0</redcap:MyCapEnabled>
+	<redcap:Purpose>2</redcap:Purpose>
+	<redcap:PurposeOther>1</redcap:PurposeOther>
+	<redcap:ProjectNotes>Used as backend database for Xpert Scrape Tool</redcap:ProjectNotes>
+	<redcap:MissingDataCodes></redcap:MissingDataCodes>
+	<redcap:ProtectedEmailMode>0</redcap:ProtectedEmailMode>
+	<redcap:ProtectedEmailModeCustomText>REDCap Secure Messaging</redcap:ProtectedEmailModeCustomText>
+	<redcap:ProtectedEmailModeTrigger>ALL</redcap:ProtectedEmailModeTrigger>
+	<redcap:ProtectedEmailModeLogo></redcap:ProtectedEmailModeLogo>
+</GlobalVariables>
+<MetaDataVersion OID="Metadata.XpertTestResults_2024-03-28_1604" Name="Xpert Test Results" redcap:RecordIdField="csn">
+	<FormDef OID="Form.data" Name="Data" Repeating="No" redcap:FormName="data">
+		<ItemGroupRef ItemGroupOID="data.csn" Mandatory="No"/>
+		<ItemGroupRef ItemGroupOID="data.data_complete" Mandatory="No"/>
+	</FormDef>
+	<ItemGroupDef OID="data.csn" Name="Data" Repeating="No">
+		<ItemRef ItemOID="csn" Mandatory="No" redcap:Variable="csn"/>
+		<ItemRef ItemOID="pid" Mandatory="Yes" redcap:Variable="pid"/>
+		<ItemRef ItemOID="sid" Mandatory="Yes" redcap:Variable="sid"/>
+		<ItemRef ItemOID="data" Mandatory="Yes" redcap:Variable="data"/>
+		<ItemRef ItemOID="pdf" Mandatory="No" redcap:Variable="pdf"/>
+	</ItemGroupDef>
+	<ItemGroupDef OID="data.data_complete" Name="Form Status" Repeating="No">
+		<ItemRef ItemOID="data_complete" Mandatory="No" redcap:Variable="data_complete"/>
+	</ItemGroupDef>
+	<ItemDef OID="csn" Name="csn" DataType="text" Length="999" redcap:Variable="csn" redcap:FieldType="text">
+		<Question><TranslatedText>Serial Number
+</TranslatedText></Question>
+	</ItemDef>
+	<ItemDef OID="pid" Name="pid" DataType="text" Length="999" redcap:Variable="pid" redcap:FieldType="text" redcap:RequiredField="y">
+		<Question><TranslatedText>PID</TranslatedText></Question>
+	</ItemDef>
+	<ItemDef OID="sid" Name="sid" DataType="text" Length="999" redcap:Variable="sid" redcap:FieldType="text" redcap:RequiredField="y">
+		<Question><TranslatedText>Sample ID</TranslatedText></Question>
+	</ItemDef>
+	<ItemDef OID="data" Name="data" DataType="text" Length="999" redcap:Variable="data" redcap:FieldType="textarea" redcap:RequiredField="y">
+		<Question><TranslatedText>Data</TranslatedText></Question>
+	</ItemDef>
+	<ItemDef OID="pdf" Name="pdf" DataType="text" Length="999" redcap:Variable="pdf" redcap:FieldType="file" redcap:FieldAnnotation="@INLINE-PREVIEW">
+		<Question><TranslatedText>PDF</TranslatedText></Question>
+	</ItemDef>
+	<ItemDef OID="data_complete" Name="data_complete" DataType="text" Length="1" redcap:Variable="data_complete" redcap:FieldType="select" redcap:SectionHeader="Form Status">
+		<Question><TranslatedText>Complete?</TranslatedText></Question>
+		<CodeListRef CodeListOID="data_complete.choices"/>
+	</ItemDef>
+	<CodeList OID="data_complete.choices" Name="data_complete" DataType="text" redcap:Variable="data_complete">
+		<CodeListItem CodedValue="0"><Decode><TranslatedText>Incomplete</TranslatedText></Decode></CodeListItem>
+		<CodeListItem CodedValue="1"><Decode><TranslatedText>Unverified</TranslatedText></Decode></CodeListItem>
+		<CodeListItem CodedValue="2"><Decode><TranslatedText>Complete</TranslatedText></Decode></CodeListItem>
+	</CodeList>
+</MetaDataVersion>
+</Study>
+</ODM>
