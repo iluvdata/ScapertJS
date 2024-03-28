@@ -148,16 +148,6 @@ function updateTable(data) {
   $("#resTbl").removeClass("d-none");
 }
 const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "short" });
-function processErr(jqXHR, modal) {
-  // did we get an ajax HTTP 401 response?
-  if(jqXHR.status == 401) {
-    showModal("Not Authenticated", "You must log in again to access this resource");
-    $("#myModal").on('hidden.bs.modal', e => { window.location = jqXHR.responseJSON.url });
-  }  else {
-    if (modal === undefined) showErr(jqXHR.responseJSON[0].msg, jqXHR.responseJSON[0].err);
-    else showModal(modal.title, modal.msg);
-  }
-}
 function showErr(msg, err) {
   let msgBox = $("#msgBox");
   msgBox.append(`<div class="alert alert-danger" id="msg" style="cursor: pointer"
@@ -171,19 +161,6 @@ function clearErr() {
 function lookupPID(sampleId, stackErr) {
   if (!stackErr) clearErr();
   Data.getPID(sampleId);
-}
-function uploadCRF(id, stackErr) {
-  if (!stackErr) clearErr();
-  $.post({
-    url: "crf", 
-    data: JSON.stringify({ "id" : id }),
-    contentType: "application/json"
-  })
-  .done(data => {
-    for(let x in data) {
-      $(`#ul${data[x].id}`).text(dateFormat.format(new Date(data[x].uploaded + " UTC")));
-    }
-  }).fail((jqXHR) => processErr(jqXHR));
 }
 function checkbox(label, name, checked) {
   return `<div class="md-3 row">
@@ -208,22 +185,22 @@ function getSettings() {
   sTab.append(checkbox("Debug Mode?", "debug", config.debug));
   sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Specimens Settings</div></div>');
   sTab.append(`<div class="md-3 row">
-          <label for="sapi" class="col-md-3 col-form-label text-end fw-bold">Specimen API URL</label>
-          <div class="col-md-9"><input type="text" class="form-control" name="sapi" id="sapi" value="${ config.RCS && config.RCS.api ? config.RCS.api : ""}" 
+          <label for="RCSapi" class="col-md-3 col-form-label text-end fw-bold">Specimen API URL</label>
+          <div class="col-md-9"><input type="text" class="form-control" name="RCSapi" id="RCSapi" value="${ config.RCS && config.RCS.api ? config.RCS.api : ""}" 
              required placeholder="https://..."></div></div>` + 
-             passcode("Specimen API Token", "sapikey", !REDCapS.hasConf()));
+             passcode("Specimen API Token", "RCSapikey", !REDCapS.hasConf()));
   sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Database Store</div></div>');
   sTab.append(`<div class="md-3 row">
-          <label for="dbapi" class="col-md-3 col-form-label text-end fw-bold">Database API URL</label>
-          <div class="col-md-9"><input type="text" class="form-control" name="dbapi" id="dbapi" value="${ config.RCDB && config.RCDB.api ? config.RCDB.api : ""}" 
+          <label for="RCDBapi" class="col-md-3 col-form-label text-end fw-bold">Database API URL</label>
+          <div class="col-md-9"><input type="text" class="form-control" name="RCDBapi" id="RCDBapi" value="${ config.RCDB && config.RCDB.api ? config.RCDB.api : ""}" 
             placeholder="https://...  (leave blank to use browser database)"></div></div>` + 
-            passcode("Database API Token", "dbapikey", !REDCapDB.hasConf()));
+            passcode("Database API Token", "RCDBapikey", !REDCapDB.hasConf()));
   sTab.append('<div class="md-3 mt-3 row"><div class="col-md fw-bold text-center">REDCap Data System Settings</div></div>');
   sTab.append(`<div class="md-3 row">
-          <label for="dapi" class="col-md-3 col-form-label text-end fw-bold">Data API URL</label>
-          <div class="col-md-9"><input type="text" class="form-control" name="dapi" id="dapi" value="${ config.RCD && config.RCD.api ? config.RCD.api : ""}" 
+          <label for="RCDapi" class="col-md-3 col-form-label text-end fw-bold">Data API URL</label>
+          <div class="col-md-9"><input type="text" class="form-control" name="RCDapi" id="RCDapi" value="${ config.RCD && config.RCD.api ? config.RCD.api : ""}" 
              required placeholder="https://..."></div></div>` + 
-             passcode("Data API Token", "dapikey", !REDCapD.hasConf()));
+             passcode("Data API Token", "RCDapikey", !REDCapD.hasConf()));
   
   sTab.append('<div class="md-3 row mt-3"><div class="col-md fw-bold text-center">Modified Xpert Settings</div></div>');
   for (let x in config.xpert) {
@@ -236,35 +213,15 @@ function getSettings() {
 }
 function saveSettings() { 
   Promise.all($("#settingsForm input:not(.btn),select").map(async (i, el) => {
-    if(el.name.startsWith("sapi")) {
-      if (!config.RCS) config.RCS = {};
-      if (el.name.startsWith("sapikey")) {
-          if (el.value !== "") {
-            config.RCS.apikey = await Encryption.encrypt(el.value);
-          }
-      } else {
-        config.RCS.api = el.value;
-      }
-    } else if(el.name.startsWith("dapi")) {
-      if (!config.RCD) config.RCD = {};
-      if (el.name.startsWith("dapikey")) {
-          if (el.value !== "") {
-            config.RCD.apikey = await Encryption.encrypt(el.value);
-          }
-      } else {
-        config.RCD.api = el.value;
-      }
-    } else if(el.name.startsWith("dbapi")) {
-      if (!config.RCDB) config.RCDB = {};
-      if (el.name.startsWith("dbapikey")) {
-          if (el.value !== "") {
-            config.RCDB.apikey = await Encryption.encrypt(el.value);
-          }
-      } else {
-        config.RCDB.api = el.value;
-      }
-    }
-    else if(!el.name.match(/^(ct|use).*/)) {
+    if(el.name.endsWith("api")) {
+      const keyname = el.name.replace("api", "");
+      if (!config[keyname]) config[keyname] = {};
+      config[keyname].api = el.value;
+    } else if (el.name.endsWith("apikey")) {
+      const keyname = el.name.replace("apikey", "");
+      if (!config[keyname]) config[keyname] = {};
+      if (el.value !== "") config[keyname].apikey = await Encryption.encrypt(el.value);
+    } else if(!el.name.match(/^(ct|use).*/)) {
       config[el.name] = el.type === "checkbox" ? el.checked :
         (el.value === "" ? null : el.value);
     } else {

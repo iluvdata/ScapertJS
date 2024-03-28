@@ -90,9 +90,6 @@ class RCDB extends REDCap {
       });
     }));
   }
-  async getSample(sid) {
-    return get("[sid] = '" + sid + "'");
-  }
   async put(data) {
     data.data = JSON.stringify(data.data);
     xp = {
@@ -132,24 +129,18 @@ class RCDB extends REDCap {
     let count = await this.post(data)
       .catch(e => 
         showError("Unable to upload to database", "REDCap Error: " + e.message));
-    xp = xpert.map((e, idx) => {
-      return {
-        pdf: e.pdf,
-        csn: e.cartridge_sn
-      };
-    });
     if(!update) {
       // Now the pdfs
-      data = new FormData();
-      data.set("content", "file");
-      data.set("action", "import");
-      data.set("field", "pdf");
-      data.set("event", "");
-      data.set("returnFormat", "json");
-      xp.forEach(async function (e) {
-        data.set("record", e.csn);
-        data.set("file", new Blob([e.pdf], {type: "application/pdf"}), e.csn + ".pdf");
-        const result = await REDCapDB.post(data)
+      xpert.forEach(function (e) {
+        data = new FormData();
+        data.set("content", "file");
+        data.set("action", "import");
+        data.set("field", "pdf");
+        data.set("event", "");
+        data.set("returnFormat", "json");
+        data.set("record", e.cartridge_sn);
+        data.set("file", new Blob([e.pdf], {type: "application/pdf"}), e.cartridge_sn + ".pdf");
+        REDCapDB.post(data)
         .catch(e => {
           showErr("Unable to upload file", "REDCap Error: " + e.message);
         });
@@ -166,7 +157,7 @@ class RCDB extends REDCap {
       event: "",
       returnFormat: "json"
     };
-    const file = await post(data, undefined, {xhr: () => {
+    const file = await this.post(data, {xhr: () => {
       const xhr = new XMLHttpRequest();
       xhr.onreadystatechange = () => {
         if (xhr.readyState == 2 && xhr.status == 200) xhr.responseType = "blob";

@@ -147,13 +147,13 @@ class RCData extends DataClass {
     });
   }
   static async getAll(sn) {
-    return get("[csn] = '" + sn.join("' or [csn] ='") + "'");
+    return this.get("[csn] = '" + sn.join("' or [csn] ='") + "'");
   }
   static async getSamples(sample_id) {
-    return get("[sid] = '" + sample_id.join("' or [sid] ='") + "'");
+    return this.get("[sid] = '" + sample_id.join("' or [sid] ='") + "'");
   }
   static async get(filter) {
-    xpert = await REDCapDB.get(filter);
+    const xpert = await REDCapDB.get(filter);
     return (xpert.map((e) => { 
       return(e.data);
     }));
